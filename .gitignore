@@ -138,3 +138,6 @@ app/settings/settings_local.py
 
 # Node_modules
 node_modules/
+
+# Serverless files
+.serverless/

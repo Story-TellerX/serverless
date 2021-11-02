@@ -1,12 +1,13 @@
 org: storyteller
 app: serverless
-service: serverless-flask
+service: serverless-sls
 
 plugins:
   - serverless-python-requirements
   - serverless-wsgi
 
 custom:
+  tableName: 'blobs-table-${self:provider.stage}'
   wsgi:
     app: app.app
     packRequirements: false
@@ -15,12 +16,44 @@ custom:
 
 provider:
   name: aws
-  runtime: python3.6
+  runtime: python3.8
   stage: dev
-  region: us-east-1
+  region: us-east-2
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - { "Fn::GetAtt": [ "BlobsDynamoDBTable", "Arn" ] }
+  environment:
+    BLOBS_TABLE: ${self:custom.tableName}
 
 functions:
   app:
     handler: wsgi.handler
     events:
-      - http: GET /
+      - http: ANY /
+      - http: 'ANY {proxy+}'
+
+resources:
+  Resources:
+    UsersDynamoDBTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: blob_id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: blob_id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:custom.tableName}
