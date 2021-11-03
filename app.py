@@ -50,7 +50,7 @@ def create_blob():
     if not callback_url:  # Check for url
         return jsonify({'error': 'Invalid callback url supplied'}), 400
 
-    blob_id = uuid.uuid4()  # Creation of uuid for blob_id
+    blob_id = str(uuid.uuid4())  # Creation of uuid for blob_id
     BASE_DOMAIN = 'https://0ruf9yg4je.execute-api.us-east-2.amazonaws.com/dev/'
     upload_url = f'{BASE_DOMAIN} + {blob_id}'
 
@@ -64,9 +64,9 @@ def create_blob():
     )
 
     return jsonify({
-        'blob_id': {'S': blob_id},
-        'callback_url': {'S': callback_url},
-        'upload_url': {'S': upload_url}
+        'blob_id': blob_id,
+        'callback_url':  callback_url,
+        'upload_url': upload_url
     })
 
 

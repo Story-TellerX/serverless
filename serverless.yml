@@ -35,32 +35,27 @@ provider:
 
 functions:
   app:
-    handler: wsgi.handler
+    handler: wsgi_handler.handler
     events:
-      - http: ANY /
-      - http: 'ANY {proxy+}'
+      - http: GET /
+
   getBlob:
-    handler: wsgi.handler
+    handler: wsgi_handler.handler
     events:
       - http:
           method: GET
           path: /blobs/{proxy+}
-          integration: lambda
-          request:
-            passThrough: NEVER
-            template:
-              application/json: ‘{}’
+
   createBlob:
-    handler: wsgi.handler
+    handler: wsgi_handler.handler
     events:
       - http:
           method: POST
           path: /blobs
-          integration: lambda
           request:
             passThrough: NEVER
             template:
-              application/json: ‘{}’
+              application/json: '{ "callback_url" : "$input.params("callback_url")" }'
 
 resources:
   Resources:
