@@ -3,7 +3,7 @@ import uuid
 
 import boto3
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 
 app = Flask(__name__)
 
@@ -28,8 +28,19 @@ def get_blob(blob_id):
     if not item:
         return jsonify({'error': 'Blob not found'}), 404
 
+    labels_data = [
+        {
+            "label": "string",
+            "confidence": 0,
+            "parents": [
+                "string"
+            ]
+        }
+    ]
+
     return jsonify({
-        'blob_id': item.get('blob_id').get('S')
+        'blob_id': item.get('blob_id').get('S'),
+        'labels': labels_data
     })
 
 
@@ -43,7 +54,7 @@ def create_blob():
     BASE_DOMAIN = 'https://0ruf9yg4je.execute-api.us-east-2.amazonaws.com/dev/'
     upload_url = f'{BASE_DOMAIN} + {blob_id}'
 
-    response = client.put_item(
+    client.put_item(
         TableName=BLOBS_TABLE,
         Item={
             'blob_id': {'S': blob_id},
@@ -57,3 +68,8 @@ def create_blob():
         'callback_url': {'S': callback_url},
         'upload_url': {'S': upload_url}
     })
+
+
+@app.errorhandler(404)
+def resource_not_found(e):
+    return make_response(jsonify(error='Not found!'), 404)

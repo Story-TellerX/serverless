@@ -47,9 +47,9 @@ functions:
           path: /blobs/{proxy+}
           integration: lambda
           request:
-            passThrough: WHEN_NO_TEMPLATES
+            passThrough: NEVER
             template:
-              application/json: '{ "blob_id" : "$input.params" }'
+              application/json: ‘{}’
   createBlob:
     handler: wsgi.handler
     events:
@@ -58,9 +58,9 @@ functions:
           path: /blobs
           integration: lambda
           request:
-            passThrough: WHEN_NO_TEMPLATES
+            passThrough: NEVER
             template:
-              application/json: null
+              application/json: ‘{}’
 
 resources:
   Resources:
@@ -68,12 +68,10 @@ resources:
       Type: 'AWS::DynamoDB::Table'
       Properties:
         AttributeDefinitions:
-          -
-            AttributeName: blob_id
+          - AttributeName: blob_id
             AttributeType: S
         KeySchema:
-          -
-            AttributeName: blob_id
+          - AttributeName: blob_id
             KeyType: HASH
         ProvisionedThroughput:
           ReadCapacityUnits: 1
