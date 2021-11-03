@@ -35,23 +35,38 @@ provider:
 
 functions:
   app:
-    handler: wsgi.handler
+    handler: wsgi_handler.handler
     events:
-      - http: ANY /
-      - http: 'ANY {proxy+}'
+      - http: GET /
+
+  getBlob:
+    handler: wsgi_handler.handler
+    events:
+      - http:
+          method: GET
+          path: /blobs/{proxy+}
+
+  createBlob:
+    handler: wsgi_handler.handler
+    events:
+      - http:
+          method: POST
+          path: /blobs
+          request:
+            passThrough: NEVER
+            template:
+              application/json: '{ "callback_url" : "$input.params("callback_url")" }'
 
 resources:
   Resources:
-    UsersDynamoDBTable:
+    BlobsDynamoDBTable:
       Type: 'AWS::DynamoDB::Table'
       Properties:
         AttributeDefinitions:
-          -
-            AttributeName: blob_id
+          - AttributeName: blob_id
             AttributeType: S
         KeySchema:
-          -
-            AttributeName: blob_id
+          - AttributeName: blob_id
             KeyType: HASH
         ProvisionedThroughput:
           ReadCapacityUnits: 1
