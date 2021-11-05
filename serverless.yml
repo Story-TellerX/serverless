@@ -8,6 +8,7 @@ plugins:
 
 custom:
   tableName: 'blobs-table-${self:provider.stage}'
+  bucketName: 'images-bucket-sls-perf${self:provider.stage}'
   wsgi:
     app: app.app
     packRequirements: false
@@ -22,6 +23,10 @@ provider:
   iamRoleStatements:
     - Effect: Allow
       Action:
+        - s3:*
+      Resource: "arn:aws:s3:::${self:provider.environment.BUCKET}/*"
+    - Effect: Allow
+      Action:
         - dynamodb:Query
         - dynamodb:Scan
         - dynamodb:GetItem
@@ -30,8 +35,17 @@ provider:
         - dynamodb:DeleteItem
       Resource:
         - { "Fn::GetAtt": [ "BlobsDynamoDBTable", "Arn" ] }
+    - Effect: Allow
+      Action:
+          - rekognition:*
+      Resource: "*"
+  s3:
+    bucketOne:
+      name: ${self:custom.bucketName}
   environment:
     BLOBS_TABLE: ${self:custom.tableName}
+    BUCKET: ${self:custom.bucketName}
+
 
 functions:
   app:
@@ -56,6 +70,13 @@ functions:
             passThrough: NEVER
             template:
               application/json: '{ "callback_url" : "$input.params("callback_url")" }'
+
+  rekognition_and_callback:
+    handler: wsgi_handler.handler
+    events:
+      - s3:
+          bucket: ${self:custom.bucketName}
+          event: s3:ObjectCreated:*
 
 resources:
   Resources:
