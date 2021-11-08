@@ -16,9 +16,19 @@ s3_client = boto3.client('s3')
 bucket = os.environ['BUCKET']
 
 
-@app.route("/")
-def index():
-    return "All works"
+# Function based on event
+def hello(event, context):
+    body = {
+        "message": "All works!",
+        "input": event,
+    }
+
+    response = {
+        "statusCode": 200,
+        "body": json.dumps(body)
+    }
+
+    return response
 
 
 @app.route("/blobs/<string:blob_id>")
@@ -52,28 +62,24 @@ def create_blob():
         Item={
             'blob_id': {'S': blob_id},
             'callback_url': {'S': callback_url}
-            # 'upload_url': {'S': upload_url['url']},
-            # 'labels': {'S': imageLabels}
         }
     )
 
     # Generate the presigned URL
-    upload_url_raw = s3_client.generate_presigned_post(
-        Bucket=bucket,
-        Key=blob_id,
-        ExpiresIn=3600
+    upload_url_raw = s3_client.generate_presigned_url(
+        'put_object',
+        Params={
+            'Bucket': bucket,
+            'Key': blob_id
+        },
+        ExpiresIn=3600,
+        HttpMethod='PUT'
     )
-
-    # Getting data for create a upload url in response
-    url_for_upload = upload_url_raw['url']
-    get_key_data = upload_url_raw['fields']
-    get_key = get_key_data['key']
-    upload_url_full = f'{url_for_upload}{get_key}'
 
     return jsonify({
         'blob_id': blob_id,
         'callback_url': callback_url,
-        'upload_url': upload_url_full
+        'upload_url': upload_url_raw
     })
 
 
@@ -81,42 +87,45 @@ def rekognition_and_callback(event, context):
 
     files_uploaded = event['Records']
     for file in files_uploaded:
-        file_name = file["s3"]["object"]["key"]
+        file_in_storage = file["s3"]
+        file_object = file_in_storage["object"]
+        file_name = file_object["key"]
 
         rekognition_client = boto3.client('rekognition')
         response = rekognition_client.detect_labels(Image={'S3Object': {'Bucket': bucket, 'Name': file_name}},
-                                                    MaxLabels=5, MinConfidence=50)
+                                                    MaxLabels=5)
 
         image_labels = []
 
         for label in response['Labels']:
-            image_labels.append(label["Label"].lower())
-            image_labels.append(label["Confidence"].lower())
-            image_labels.append(label["Parents"].lower())
+            image_labels.append("Label: " + label['Name'])
+            image_labels.append("Confidence: " + str(label['Confidence']))
+            for parent in label['Parents']:
+                image_labels.append("   " + parent['Name'])
 
-        table = client.Table('BLOBS_TABLE')
         try:
-            response = table.get_item(Key={'blob_id': file_name})
+            response = client.get_item(
+                TableName=BLOBS_TABLE,
+                Key={
+                    'blob_id': {'S': file_name}
+                }
+            )
             item = response.get('Item')
+            callback_url = item.get('callback_url')
         except ClientError as e:
             print(e.response['Error']['Message'])
         else:
-            response = table.update_item(
-                Key={
-                    'blob_id': file_name
-                },
-                UpdateExpression="set info.labels=:l",
-                ExpressionAttributeValues={
-                    ':l': list(image_labels)
-                },
-                ReturnValues="UPDATED_NEW"
+            response = client.put_item(
+                TableName=BLOBS_TABLE,
+                Item={
+                    'blob_id': {'S': file_name},
+                    'callback_url': {'S': callback_url},
+                    'labels': image_labels
+                }
             )
 
-            blob_id = item.get('blob_id')
-            callback_url = item.get('callback_url')
-
             data = {
-                'blob_id': blob_id,
+                'blob_id': file_name,
                 'labels': image_labels
             }
 
