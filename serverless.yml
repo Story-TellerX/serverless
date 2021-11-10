@@ -79,7 +79,7 @@ functions:
     events:
       - s3:
           bucket: ${self:custom.bucketName}
-          event: s3:ObjectCreated:*
+          event: s3:ObjectCreated:Put
 
 resources:
   Resources:

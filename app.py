@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import os
 import uuid
 
@@ -84,52 +85,75 @@ def create_blob():
 
 
 def rekognition_and_callback(event, context):
+    files_uploaded = event['Records'][0]
 
-    files_uploaded = event['Records']
-    for file in files_uploaded:
-        file_in_storage = file["s3"]
-        file_object = file_in_storage["object"]
-        file_name = file_object["key"]
+    file_in_storage = files_uploaded["s3"]
+    file_object = file_in_storage["object"]
+    file_name = file_object["key"]
 
-        rekognition_client = boto3.client('rekognition')
-        response = rekognition_client.detect_labels(Image={'S3Object': {'Bucket': bucket, 'Name': file_name}},
-                                                    MaxLabels=5)
+    s3_object = s3_client.get_object(Bucket=bucket, Key=file_name)
+    header_for_content = s3_object['ContentType']
+    extension = mimetypes.guess_extension(header_for_content, strict=False)
 
-        image_labels = []
+    filename_with_extension = f'{file_name}{extension}'
 
-        for label in response['Labels']:
-            image_labels.append("Label: " + label['Name'])
-            image_labels.append("Confidence: " + str(label['Confidence']))
-            for parent in label['Parents']:
-                image_labels.append("   " + parent['Name'])
+    copy_source = {'Bucket': bucket, 'Key': file_name}
+    s3_client.copy_object(Bucket=bucket, CopySource=copy_source, Key=filename_with_extension)
+    s3_client.delete_object(Bucket=bucket, Key=file_name)
 
-        try:
-            response = client.get_item(
-                TableName=BLOBS_TABLE,
-                Key={
-                    'blob_id': {'S': file_name}
-                }
-            )
-            item = response.get('Item')
-            callback_url = item.get('callback_url')
-        except ClientError as e:
-            print(e.response['Error']['Message'])
-        else:
-            response = client.put_item(
-                TableName=BLOBS_TABLE,
-                Item={
-                    'blob_id': {'S': file_name},
-                    'callback_url': {'S': callback_url},
-                    'labels': image_labels
-                }
-            )
+    rekognition_client = boto3.client('rekognition')
+    response = rekognition_client.detect_labels(Image={'S3Object': {'Bucket': bucket, 'Name': filename_with_extension}},
+                                                MaxLabels=5)
 
-            data = {
-                'blob_id': file_name,
-                'labels': image_labels
+    image_labels = {}
+    parent_list = []
+
+    for label in response['Labels']:
+        #     image_labels.append("Label: " + label['Name'])
+        #     image_labels.append("Confidence: " + str(label['Confidence']))
+        for parent in label['Parents']:
+            parent_list.append("   " + parent['Name'])
+
+    parent_in_str = ' '.join([str(elem) for elem in parent_list])
+
+    for label in response['Labels']:
+        image_labels["Label: "] = label['Name']
+        image_labels["Confidence: "] = str(label['Confidence'])
+        image_labels["Parent: "] = parent_in_str
+
+    try:
+        response = client.get_item(
+            TableName=BLOBS_TABLE,
+            Key={
+                'blob_id': {'S': file_name}
             }
+        )
+        item = response.get('Item')
+        callback_url = item.get('callback_url')
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+    else:
+        response = client.put_item(
+            TableName=BLOBS_TABLE,
+            Item={
+                'blob_id': {'S': file_name},
+                'callback_url': callback_url,
+                'labels': {"M":
+                    {
+                        "label": {'S': image_labels["Label: "]},
+                        "Confidence": {'S': image_labels["Confidence: "]},
+                        "Parent": {'S': image_labels["Parent: "]}
+                    }
+                }
+            }
+        )
 
-            return requests.post(callback_url, data=json.dumps(data))
+        data = {
+            'blob_id': file_name,
+            'labels': image_labels
+        }
+
+        return requests.post(callback_url, data=json.dumps(data))
 
 
 @app.errorhandler(404)
