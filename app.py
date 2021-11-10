@@ -44,9 +44,12 @@ def get_blob(blob_id):
     if not item:
         return jsonify({'error': 'Blob not found'}), 404
 
+    labels_raw = item.get('labels').get('S')
+    labels_for_response = json.loads(labels_raw)
+
     return jsonify({
         'blob_id': item.get('blob_id').get('S'),
-        'labels': item.get('labels')
+        'labels': labels_for_response
     })
 
 
@@ -105,21 +108,17 @@ def rekognition_and_callback(event, context):
     response = rekognition_client.detect_labels(Image={'S3Object': {'Bucket': bucket, 'Name': filename_with_extension}},
                                                 MaxLabels=5)
 
-    image_labels = {}
+    image_labels_dict = {}
     parent_list = []
+    image_labels_list = []
 
     for label in response['Labels']:
-        #     image_labels.append("Label: " + label['Name'])
-        #     image_labels.append("Confidence: " + str(label['Confidence']))
+        image_labels_dict["Label"] = label['Name']
+        image_labels_dict["Confidence"] = label['Confidence']
         for parent in label['Parents']:
-            parent_list.append("   " + parent['Name'])
-
-    parent_in_str = ' '.join([str(elem) for elem in parent_list])
-
-    for label in response['Labels']:
-        image_labels["Label: "] = label['Name']
-        image_labels["Confidence: "] = str(label['Confidence'])
-        image_labels["Parent: "] = parent_in_str
+            parent_list.append(parent['Name'])
+            image_labels_dict["Parent"] = parent_list
+        image_labels_list.append(dict(image_labels_dict))
 
     try:
         response = client.get_item(
@@ -133,24 +132,19 @@ def rekognition_and_callback(event, context):
     except ClientError as e:
         print(e.response['Error']['Message'])
     else:
+        image_labels_list_for_db = json.dumps(image_labels_list)
         response = client.put_item(
             TableName=BLOBS_TABLE,
             Item={
                 'blob_id': {'S': file_name},
                 'callback_url': callback_url,
-                'labels': {"M":
-                    {
-                        "label": {'S': image_labels["Label: "]},
-                        "Confidence": {'S': image_labels["Confidence: "]},
-                        "Parent": {'S': image_labels["Parent: "]}
-                    }
-                }
+                'labels': {'S': image_labels_list_for_db}
             }
         )
 
         data = {
             'blob_id': file_name,
-            'labels': image_labels
+            'labels': image_labels_list
         }
 
         return requests.post(callback_url, data=json.dumps(data))
