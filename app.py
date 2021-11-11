@@ -44,11 +44,20 @@ def get_blob(blob_id):
     if not item:
         return jsonify({'error': 'Blob not found'}), 404
 
-    labels_raw = item.get('labels').get('S')
-    labels_for_response = json.loads(labels_raw)
+    blob_id = item.get('blob_id').get('S')
+
+    labels_raw = item.get('labels')
+    if not labels_raw:
+        return jsonify({
+            'blob_id': blob_id,
+            'labels': 'No labels are found'
+        })
+
+    labels_for_response_raw = item.get('labels').get('S')
+    labels_for_response = json.loads(labels_for_response_raw)
 
     return jsonify({
-        'blob_id': item.get('blob_id').get('S'),
+        'blob_id': blob_id,
         'labels': labels_for_response
     })
 
@@ -128,7 +137,7 @@ def rekognition_and_callback(event, context):
             }
         )
         item = response.get('Item')
-        callback_url = item.get('callback_url')
+        callback_url_get_from_db = item.get('callback_url').get('S')
     except ClientError as e:
         print(e.response['Error']['Message'])
     else:
@@ -137,7 +146,7 @@ def rekognition_and_callback(event, context):
             TableName=BLOBS_TABLE,
             Item={
                 'blob_id': {'S': file_name},
-                'callback_url': callback_url,
+                'callback_url': {'S': callback_url_get_from_db},
                 'labels': {'S': image_labels_list_for_db}
             }
         )
@@ -146,8 +155,11 @@ def rekognition_and_callback(event, context):
             'blob_id': file_name,
             'labels': image_labels_list
         }
+        data_for_callback = json.dumps(data)
+        headers = {'Content-Type': 'application/json'}
+        requests.post(callback_url_get_from_db, headers=headers, data=data_for_callback)
 
-        return requests.post(callback_url, data=json.dumps(data))
+        return str('Rekognition and callback function finish work')
 
 
 @app.errorhandler(404)
